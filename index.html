@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f8f6f2">
+  <meta name="description" content="Простой личный планнер с голосовым вводом, событиями и задачами.">
+  <title>Тихий день — планнер</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="Тихий день — на главную">
+        <span class="brand-mark" aria-hidden="true">т</span>
+        <span>тихий день</span>
+      </a>
+      <p class="topbar-note">Твоё время — в твоём ритме</p>
+      <button class="today-button" id="today-button" type="button">Сегодня</button>
+    </header>
+
+    <main>
+      <section class="welcome">
+        <div>
+          <p class="eyebrow" id="today-label"></p>
+          <h1>Пусть день будет <span>твоим.</span></h1>
+          <p class="welcome-copy">Все важное — спокойно и в одном месте.</p>
+        </div>
+        <div class="welcome-flower" aria-hidden="true">✳</div>
+      </section>
+
+      <div class="dashboard">
+        <section class="calendar-card panel" aria-label="Календарь">
+          <div class="calendar-heading">
+            <div>
+              <p class="eyebrow">ТВОЙ КАЛЕНДАРЬ</p>
+              <h2 id="month-title"></h2>
+            </div>
+            <div class="month-controls">
+              <button class="icon-button" id="previous-month" type="button" aria-label="Предыдущий месяц">‹</button>
+              <button class="icon-button" id="next-month" type="button" aria-label="Следующий месяц">›</button>
+            </div>
+          </div>
+          <div class="calendar-grid calendar-weekdays" aria-hidden="true">
+            <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span>
+          </div>
+          <div class="calendar-grid" id="calendar-days" role="grid" aria-label="Дни месяца"></div>
+          <div class="calendar-legend"><span class="legend-dot"></span> Есть планы</div>
+        </section>
+
+        <aside class="side-column">
+          <section class="agenda-card panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">ТВОИ ПЛАНЫ</p>
+                <h2 id="selected-date-title"></h2>
+              </div>
+              <span class="event-count" id="event-count">0</span>
+            </div>
+            <div class="agenda-list" id="agenda-list"></div>
+          </section>
+
+          <section class="tasks-card panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">МАЛЕНЬКИЕ ШАГИ</p>
+                <h2>Задачи</h2>
+              </div>
+              <span class="task-count" id="task-count">0</span>
+            </div>
+            <form class="task-form" id="task-form">
+              <label class="sr-only" for="task-input">Новая задача</label>
+              <input id="task-input" type="text" maxlength="120" placeholder="Что хочется сделать?">
+              <button type="submit" aria-label="Добавить задачу">+</button>
+            </form>
+            <ul class="task-list" id="task-list"></ul>
+          </section>
+        </aside>
+
+        <section class="create-card panel" id="create-card">
+          <div class="section-heading create-heading">
+            <div>
+              <p class="eyebrow">НОВЫЙ ПЛАН</p>
+              <h2 id="form-heading">Добавить событие</h2>
+            </div>
+            <span class="sparkle" aria-hidden="true">✳</span>
+          </div>
+
+          <div class="voice-actions">
+            <button class="voice-button" id="record-button" type="button">
+              <span aria-hidden="true">♩</span> Записать голосом
+            </button>
+            <button class="voice-button voice-button-secondary" id="add-voice-button" type="button" hidden>
+              <span aria-hidden="true">＋</span> Добавить голосом
+            </button>
+          </div>
+          <p class="voice-hint" id="voice-hint">Для распознавания речи может понадобиться интернет. Без сети можно заполнить событие вручную.</p>
+          <div class="status-message" id="status-message" role="status" aria-live="polite" hidden></div>
+
+          <form class="event-form" id="event-form">
+            <div class="field">
+              <label for="event-title">Название</label>
+              <input id="event-title" name="title" type="text" maxlength="120" placeholder="Например, прогулка с Аней" required>
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label for="event-date">Дата</label>
+                <input id="event-date" name="date" type="date" required>
+              </div>
+              <div class="field">
+                <label for="event-time">Время</label>
+                <input id="event-time" name="time" type="time">
+              </div>
+            </div>
+            <div class="field">
+              <label for="event-place">Место <span class="optional">необязательно</span></label>
+              <input id="event-place" name="place" type="text" maxlength="120" placeholder="Где встретимся?">
+            </div>
+            <div class="field">
+              <label for="event-notes">Детали <span class="optional">необязательно</span></label>
+              <textarea id="event-notes" name="notes" rows="2" maxlength="500" placeholder="Что важно не забыть?"></textarea>
+            </div>
+            <div class="transcript-box" id="transcript-box" hidden>
+              <label for="voice-transcript">Распознанный текст <span class="optional">можно исправить</span></label>
+              <textarea id="voice-transcript" rows="3" maxlength="1000"></textarea>
+            </div>
+            <div class="form-actions">
+              <button class="primary-button" id="save-event-button" type="submit">Подтвердить событие</button>
+              <button class="text-button" id="cancel-edit-button" type="button" hidden>Отменить</button>
+            </div>
+          </form>
+          <p class="privacy-note">Черновики остаются в этом браузере. Распознавание речи зависит от браузера и может обрабатываться его сервисом.</p>
+          <div class="backup-actions" aria-label="Резервное копирование">
+            <button class="backup-button" id="export-backup-button" type="button">Скачать копию</button>
+            <button class="backup-button" id="import-backup-button" type="button">Восстановить</button>
+            <input class="sr-only" id="backup-file-input" type="file" accept="application/json,.json" tabindex="-1" aria-label="Выбрать файл резервной копии">
+          </div>
+          <p class="backup-note">Сохрани файл отдельно. Восстановление заменит текущие записи.</p>
+        </section>
+      </div>
+    </main>
+    <footer>бережно к твоему времени <span aria-hidden="true">·</span> данные хранятся на устройстве</footer>
+  </div>
+</body>
+</html>

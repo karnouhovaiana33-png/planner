@@ -126,9 +126,12 @@ h1 span { color: var(--rose); }
 .field { display: grid; gap: 6px; }
 .field label, .transcript-box label { color: #69665f; font-size: 11px; font-weight: 600; }
 .optional { color: #aaa69e; font-weight: 400; }
-.field input, .field textarea, .transcript-box textarea { padding: 10px 11px; font-size: 12px; }
-.field input:focus, .field textarea:focus, .task-form input:focus, .transcript-box textarea:focus { border-color: #d6a49a; }
+.field input, .field select, .field textarea, .transcript-box textarea { padding: 10px 11px; font-size: 12px; }
+.field select { width: 100%; border: 1px solid #eae7e0; border-radius: 10px; background: #fff; color: var(--ink); }
+.field input:focus, .field select:focus, .field textarea:focus, .task-form input:focus, .transcript-box textarea:focus { border-color: #d6a49a; }
 .field textarea, .transcript-box textarea { resize: vertical; }
+.repeat-hint { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.event-repeat-label { color: var(--sage); }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .transcript-box { display: grid; gap: 6px; padding-top: 2px; }
 .form-actions { display: flex; align-items: center; gap: 10px; margin-top: 2px; }

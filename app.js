@@ -33,6 +33,9 @@ const elements = {
   title: document.querySelector("#event-title"),
   date: document.querySelector("#event-date"),
   time: document.querySelector("#event-time"),
+  duration: document.querySelector("#event-duration"),
+  repeat: document.querySelector("#event-repeat"),
+  repeatHint: document.querySelector("#repeat-hint"),
   place: document.querySelector("#event-place"),
   notes: document.querySelector("#event-notes"),
   recordButton: document.querySelector("#record-button"),
@@ -101,6 +104,8 @@ function getCurrentDraft() {
     title: elements.title.value,
     date: elements.date.value,
     time: elements.time.value,
+    durationMinutes: elements.duration.value,
+    repeat: elements.repeat.value,
     place: elements.place.value,
     notes: elements.notes.value,
     transcript: elements.transcript.value,
@@ -110,7 +115,8 @@ function getCurrentDraft() {
     touchedFields: [...touchedFields],
     voiceFields: [...voiceFields]
   };
-  const hasContent = [draft.title, draft.time, draft.place, draft.notes, draft.transcript].some(value => value.trim());
+  const hasContent = [draft.title, draft.time, draft.place, draft.notes, draft.transcript].some(value => value.trim())
+    || draft.repeat === "weekly";
   return hasContent ? draft : null;
 }
 
@@ -120,6 +126,10 @@ function restoreDraft(draft) {
   elements.title.value = typeof draft.title === "string" ? draft.title : "";
   elements.date.value = typeof draft.date === "string" ? draft.date : "";
   elements.time.value = typeof draft.time === "string" ? draft.time : "";
+  elements.duration.value = ["30", "45", "60", "90", "120", "180"].includes(String(draft.durationMinutes))
+    ? String(draft.durationMinutes)
+    : "60";
+  elements.repeat.value = draft.repeat === "weekly" ? "weekly" : "none";
   elements.place.value = typeof draft.place === "string" ? draft.place : "";
   elements.notes.value = typeof draft.notes === "string" ? draft.notes : "";
   elements.transcript.value = typeof draft.transcript === "string" ? draft.transcript : "";
@@ -147,6 +157,7 @@ function restoreDraft(draft) {
   elements.voiceHint.textContent = voiceDraft
     ? "Черновик восстановлен. Проверь детали или добавь голосом новые."
     : "Черновик восстановлен. Продолжи заполнение события.";
+  updateRepeatHint();
 }
 
 function saveStorage(draft = getCurrentDraft()) {
@@ -193,8 +204,10 @@ function isValidBackup(backup) {
     && backup.data && typeof backup.data === "object"
     && Array.isArray(backup.data.events)
     && backup.data.events.every(event => event && typeof event.id === "string"
-      && typeof event.title === "string" && typeof event.date === "string")
-    && Array.isArray(backup.data.tasks)
+      && typeof event.title === "string" && typeof event.date === "string"
+      && (event.repeat === undefined || event.repeat === "none" || event.repeat === "weekly")
+      && (event.durationMinutes === undefined || Number.isInteger(event.durationMinutes)
+        && event.durationMinutes >= 15 && event.durationMinutes <= 720))
     && backup.data.tasks.every(task => task && typeof task.id === "string" && typeof task.text === "string")
     && (backup.data.draft === null || typeof backup.data.draft === "object");
 }
@@ -243,6 +256,84 @@ function render() {
   renderTasks();
 }
 
+function shiftDate(date, days) {
+  const shifted = new Date(`${date}T12:00:00`);
+  shifted.setDate(shifted.getDate() + days);
+  return dateKey(shifted);
+}
+
+function eventOccursOnDate(event, key) {
+  if (event.date === key) return true;
+  if (event.repeat !== "weekly" || key < event.date) return false;
+  return new Date(`${event.date}T12:00:00`).getDay() === new Date(`${key}T12:00:00`).getDay();
+}
+
+function updateRepeatHint() {
+  if (elements.repeat.value !== "weekly" || !elements.date.value) {
+    elements.repeatHint.textContent = "Однократное событие.";
+    return;
+  }
+  const weekday = new Intl.DateTimeFormat("ru-RU", { weekday: "long" }).format(new Date(`${elements.date.value}T12:00:00`));
+  elements.repeatHint.textContent = `Каждую неделю, в день недели — ${weekday}. Изменение и удаление затронут всю серию.`;
+}
+
+function getEventInterval(event, key) {
+  const start = event.time ? new Date(`${key}T${event.time}:00`) : new Date(`${key}T00:00:00`);
+  const end = event.time
+    ? new Date(start.getTime() + (Number(event.durationMinutes) || 60) * 60 * 1000)
+    : new Date(`${shiftDate(key, 1)}T00:00:00`);
+  return { start: start.getTime(), end: end.getTime() };
+}
+
+function intervalsOverlap(first, second) {
+  return first.start < second.end && second.start < first.end;
+}
+
+function findConflictDate(firstEvent, secondEvent) {
+  const firstWeekly = firstEvent.repeat === "weekly";
+  const secondWeekly = secondEvent.repeat === "weekly";
+  let firstDate;
+  let lastDate;
+
+  if (firstWeekly && secondWeekly) {
+    const anchor = firstEvent.date > secondEvent.date ? firstEvent.date : secondEvent.date;
+    firstDate = shiftDate(anchor, -1);
+    lastDate = shiftDate(anchor, 7);
+  } else if (firstWeekly || secondWeekly) {
+    const fixedDate = firstWeekly ? secondEvent.date : firstEvent.date;
+    firstDate = shiftDate(fixedDate, -1);
+    lastDate = shiftDate(fixedDate, 1);
+  } else {
+    firstDate = firstEvent.date < secondEvent.date ? firstEvent.date : secondEvent.date;
+    lastDate = firstEvent.date > secondEvent.date ? firstEvent.date : secondEvent.date;
+    if (lastDate > shiftDate(firstDate, 1)) return null;
+  }
+
+  const firstOccurrences = [];
+  const secondOccurrences = [];
+  for (let key = firstDate; key <= lastDate; key = shiftDate(key, 1)) {
+    if (eventOccursOnDate(firstEvent, key)) firstOccurrences.push({ key, interval: getEventInterval(firstEvent, key) });
+    if (eventOccursOnDate(secondEvent, key)) secondOccurrences.push({ key, interval: getEventInterval(secondEvent, key) });
+  }
+  for (const first of firstOccurrences) {
+    for (const second of secondOccurrences) {
+      if (intervalsOverlap(first.interval, second.interval)) {
+        return first.key > second.key ? first.key : second.key;
+      }
+    }
+  }
+  return null;
+}
+
+function findScheduleConflict(candidate) {
+  for (const event of events) {
+    if (event.id === candidate.id) continue;
+    const date = findConflictDate(candidate, event);
+    if (date) return { event, date };
+  }
+  return null;
+}
+
 function renderCalendar() {
   elements.calendarDays.replaceChildren();
   const year = displayedMonth.getFullYear();
@@ -251,8 +342,6 @@ function renderCalendar() {
   const offset = (firstDay.getDay() + 6) % 7;
   const gridStart = new Date(year, month, 1 - offset);
   const todayKey = dateKey(today);
-  const eventDates = new Set(events.map(event => event.date));
-
   for (let index = 0; index < 42; index += 1) {
     const date = new Date(gridStart);
     date.setDate(gridStart.getDate() + index);
@@ -270,7 +359,7 @@ function renderCalendar() {
     number.className = "day-number";
     number.textContent = String(date.getDate());
     button.append(number);
-    if (eventDates.has(key)) {
+    if (events.some(event => eventOccursOnDate(event, key))) {
       const dot = document.createElement("span");
       dot.className = "event-indicator";
       dot.setAttribute("aria-hidden", "true");
@@ -291,8 +380,8 @@ function formatSelectedDate(key) {
 }
 
 function renderAgenda() {
-  const selectedEvents = events.filter(event => event.date === selectedDate).sort((a, b) =>
-    (a.time || "99:99").localeCompare(b.time || "99:99")
+  const selectedEvents = events.filter(event => eventOccursOnDate(event, selectedDate)).sort((a, b) =>
+    !a.time && b.time ? -1 : a.time && !b.time ? 1 : (a.time || "").localeCompare(b.time || "")
   );
   elements.selectedDateTitle.textContent = formatSelectedDate(selectedDate);
   elements.eventCount.textContent = String(selectedEvents.length);
@@ -332,6 +421,12 @@ function renderAgenda() {
       notes.className = "event-meta";
       notes.textContent = event.notes;
       content.append(notes);
+    }
+    if (event.repeat === "weekly") {
+      const repeat = document.createElement("p");
+      repeat.className = "event-meta event-repeat-label";
+      repeat.textContent = "Каждую неделю";
+      content.append(repeat);
     }
     const actions = document.createElement("div");
     actions.className = "event-actions";
@@ -393,6 +488,7 @@ function renderTasks() {
 function resetEventForm() {
   elements.eventForm.reset();
   elements.date.value = selectedDate;
+  updateRepeatHint();
   elements.transcriptBox.hidden = true;
   elements.transcript.value = "";
   elements.addVoiceButton.hidden = true;
@@ -419,6 +515,9 @@ function editEvent(id) {
   elements.title.value = event.title;
   elements.date.value = event.date;
   elements.time.value = event.time || "";
+  elements.duration.value = String(event.durationMinutes || 60);
+  elements.repeat.value = event.repeat === "weekly" ? "weekly" : "none";
+  updateRepeatHint();
   elements.place.value = event.place || "";
   elements.notes.value = event.notes || "";
   elements.transcriptBox.hidden = true;
@@ -434,7 +533,10 @@ function editEvent(id) {
 
 function deleteEvent(id) {
   const event = events.find(item => item.id === id);
-  if (!event || !window.confirm(`Удалить событие «${event.title}»?`)) return;
+  const confirmation = event && event.repeat === "weekly"
+    ? `Удалить событие «${event.title}» и все его повторения?`
+    : `Удалить событие «${event?.title}»?`;
+  if (!event || !window.confirm(confirmation)) return;
   events = events.filter(item => item.id !== id);
   if (saveStorage()) {
     render();
@@ -685,9 +787,17 @@ function saveEvent(event) {
     title,
     date,
     time,
+    durationMinutes: Number(elements.duration.value) || 60,
+    repeat: elements.repeat.value,
     place: elements.place.value.trim(),
     notes: elements.notes.value.trim()
   };
+  const conflict = findScheduleConflict(eventData);
+  if (conflict) {
+    showStatus(`Накладка: «${eventData.title}» пересекается с «${conflict.event.title}» ${formatSelectedDate(conflict.date)}. Измени время или день, чтобы сохранить занятие.`, "error");
+    elements.time.focus();
+    return;
+  }
   const originalEvents = events;
   events = editingEventId
     ? events.map(item => item.id === editingEventId ? eventData : item)
@@ -710,7 +820,7 @@ function downloadIcs(event) {
     + String(date.getMonth() + 1).padStart(2, "0")
     + String(date.getDate()).padStart(2, "0");
   const start = event.time ? new Date(`${event.date}T${event.time}:00`) : null;
-  const end = start ? new Date(start.getTime() + 60 * 60 * 1000) : null;
+  const end = start ? new Date(start.getTime() + (Number(event.durationMinutes) || 60) * 60 * 1000) : null;
   const allDayEnd = new Date(`${event.date}T12:00:00`);
   allDayEnd.setDate(allDayEnd.getDate() + 1);
   const escapeIcs = value => String(value).replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
@@ -726,6 +836,11 @@ function downloadIcs(event) {
         `DTEND;VALUE=DATE:${formatDate(allDayEnd)}`]),
     `SUMMARY:${escapeIcs(event.title)}`
   ];
+  if (event.repeat === "weekly") {
+    const weekdays = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
+    const weekday = weekdays[new Date(`${event.date}T12:00:00`).getDay()];
+    lines.push(`RRULE:FREQ=WEEKLY;BYDAY=${weekday}`);
+  }
   if (event.place) lines.push(`LOCATION:${escapeIcs(event.place)}`);
   if (event.notes) lines.push(`DESCRIPTION:${escapeIcs(event.notes)}`);
   lines.push("END:VEVENT", "END:VCALENDAR");
@@ -760,6 +875,13 @@ elements.taskForm.addEventListener("submit", event => {
 elements.eventForm.addEventListener("submit", saveEvent);
 elements.recordButton.addEventListener("click", () => beginRecognition("initial"));
 elements.addVoiceButton.addEventListener("click", () => beginRecognition("additional"));
+elements.repeat.addEventListener("change", () => {
+  manualFieldsTouched = true;
+  elements.cancelEditButton.hidden = false;
+  updateRepeatHint();
+  saveStorage();
+});
+elements.date.addEventListener("input", updateRepeatHint);
 elements.exportBackupButton.addEventListener("click", downloadBackup);
 elements.importBackupButton.addEventListener("click", () => elements.backupFileInput.click());
 elements.backupFileInput.addEventListener("change", () => {
@@ -783,4 +905,5 @@ elements.cancelEditButton.addEventListener("click", () => {
 });
 readStorage();
 if (!draftRestored) elements.date.value = selectedDate;
+updateRepeatHint();
 render();

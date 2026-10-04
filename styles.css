@@ -80,6 +80,28 @@ h1 span { color: var(--rose); }
 .section-heading h2 { font-size: 18px; }
 .event-count, .task-count { display: grid; min-width: 27px; height: 27px; place-items: center; padding: 0 7px; border-radius: 50%; background: var(--sage-pale); color: #71806d; font-size: 12px; font-weight: 600; }
 .agenda-list { display: grid; gap: 10px; }
+.day-view-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+.day-view-toolbar[hidden] { display: none; }
+.day-navigation { display: flex; gap: 8px; }
+.back-to-calendar { padding-left: 0; font-size: 13px; }
+.day-view-mode { width: 100%; min-height: 100vh; padding: 0 32px; }
+.day-view-mode .welcome,
+.day-view-mode .calendar-card,
+.day-view-mode .tasks-card,
+.day-view-mode .create-card,
+.day-view-mode footer { display: none; }
+.day-view-mode main { min-height: calc(100vh - 83px); }
+.day-view-mode .dashboard { display: block; }
+.day-view-mode .side-column { display: block; }
+.day-view-mode .agenda-card { min-height: calc(100vh - 110px); padding: 30px 0 48px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.day-view-mode .section-heading { justify-content: flex-start; gap: 14px; margin-bottom: 30px; }
+.day-view-mode .section-heading h2 { font-size: 28px; }
+.day-view-mode .event-count { min-width: 32px; height: 32px; }
+.day-view-mode .agenda-list { max-width: 900px; gap: 12px; }
+.day-view-mode .event-item { grid-template-columns: 4px minmax(0, 1fr) auto; gap: 16px; padding: 18px 16px; }
+.day-view-mode .event-time { font-size: 14px; }
+.day-view-mode .event-title { font-size: 16px; }
+.day-view-mode .event-meta { font-size: 13px; }
 .empty-state { padding: 17px 13px; border-radius: 13px; background: #faf8f4; color: var(--muted); font-size: 13px; line-height: 1.55; }
 .event-item { display: grid; grid-template-columns: 4px minmax(0, 1fr) auto; gap: 11px; align-items: stretch; padding: 12px 11px; border: 1px solid #f0eee8; border-radius: 13px; }
 .event-stripe { border-radius: 9px; background: #d6a39a; }
@@ -172,6 +194,12 @@ footer span { margin: 0 5px; color: #d4aca1; }
   .agenda-card { grid-row: 2; }
   .tasks-card { grid-row: 3; }
   .create-card { grid-column: 1; grid-row: 4; }
+  .day-view-mode { padding: 0 14px; }
+  .day-view-mode .agenda-card { padding-top: 23px; }
+  .day-view-mode .day-view-toolbar { margin-bottom: 22px; }
+  .day-view-mode .section-heading { margin-bottom: 22px; }
+  .day-view-mode .section-heading h2 { font-size: 23px; }
+  .day-view-mode .event-item { gap: 10px; padding: 14px 10px; }
 }
 
 @media (max-width: 380px) {

@@ -13,6 +13,7 @@ const monthsByName = new Map([
 ]);
 
 const elements = {
+  appShell: document.querySelector(".app-shell"),
   todayLabel: document.querySelector("#today-label"),
   todayButton: document.querySelector("#today-button"),
   monthTitle: document.querySelector("#month-title"),
@@ -22,6 +23,10 @@ const elements = {
   selectedDateTitle: document.querySelector("#selected-date-title"),
   agendaList: document.querySelector("#agenda-list"),
   eventCount: document.querySelector("#event-count"),
+  dayViewToolbar: document.querySelector("#day-view-toolbar"),
+  backToCalendar: document.querySelector("#back-to-calendar"),
+  previousDay: document.querySelector("#previous-day"),
+  nextDay: document.querySelector("#next-day"),
   taskCount: document.querySelector("#task-count"),
   taskForm: document.querySelector("#task-form"),
   taskInput: document.querySelector("#task-input"),
@@ -52,6 +57,7 @@ const elements = {
 const today = new Date();
 let selectedDate = dateKey(today);
 let displayedMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+let isDayView = false;
 let events = [];
 let tasks = [];
 let editingEventId = null;
@@ -251,6 +257,8 @@ function render() {
   const todayLabel = new Intl.DateTimeFormat("ru-RU", { weekday: "long", day: "numeric", month: "long" }).format(today);
   elements.todayLabel.textContent = todayLabel.toLocaleUpperCase("ru-RU");
   elements.monthTitle.textContent = `${monthNames[displayedMonth.getMonth()]} ${displayedMonth.getFullYear()}`;
+  elements.appShell.classList.toggle("day-view-mode", isDayView);
+  elements.dayViewToolbar.hidden = !isDayView;
   renderCalendar();
   renderAgenda();
   renderTasks();
@@ -368,6 +376,7 @@ function renderCalendar() {
     button.addEventListener("click", () => {
       selectedDate = key;
       displayedMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+      isDayView = true;
       render();
     });
     elements.calendarDays.append(button);
@@ -377,6 +386,18 @@ function renderCalendar() {
 function formatSelectedDate(key) {
   const date = new Date(`${key}T12:00:00`);
   return new Intl.DateTimeFormat("ru-RU", { weekday: "long", day: "numeric", month: "long" }).format(date);
+}
+
+function formatEventTime(event, occurrenceDate) {
+  if (!event.time) return "Весь день";
+  const start = new Date(`${occurrenceDate}T${event.time}:00`);
+  const end = new Date(start.getTime() + (Number(event.durationMinutes) || 60) * 60 * 1000);
+  const formatTime = date => new Intl.DateTimeFormat("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).format(date);
+  return `${formatTime(start)}–${formatTime(end)}`;
 }
 
 function renderAgenda() {
@@ -405,7 +426,7 @@ function renderAgenda() {
     content.className = "event-content";
     const time = document.createElement("p");
     time.className = "event-time";
-    time.textContent = event.time || "Время не указано";
+    time.textContent = formatEventTime(event, selectedDate);
     const title = document.createElement("p");
     title.className = "event-title";
     title.textContent = event.title;
@@ -507,6 +528,8 @@ function resetEventForm() {
 function editEvent(id) {
   const event = events.find(item => item.id === id);
   if (!event) return;
+  isDayView = false;
+  render();
   editingEventId = id;
   voiceDraft = false;
   elements.formHeading.textContent = "Изменить событие";
@@ -868,6 +891,19 @@ elements.todayButton.addEventListener("click", () => {
   displayedMonth = new Date(today.getFullYear(), today.getMonth(), 1);
   render();
 });
+elements.backToCalendar.addEventListener("click", () => {
+  isDayView = false;
+  render();
+});
+for (const [button, offset] of [[elements.previousDay, -1], [elements.nextDay, 1]]) {
+  button.addEventListener("click", () => {
+    const date = new Date(`${selectedDate}T12:00:00`);
+    date.setDate(date.getDate() + offset);
+    selectedDate = dateKey(date);
+    displayedMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+    render();
+  });
+}
 elements.taskForm.addEventListener("submit", event => {
   event.preventDefault();
   addTask(elements.taskInput.value);

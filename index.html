@@ -56,6 +56,7 @@
               <div class="day-navigation">
                 <button class="icon-button" id="previous-day" type="button" aria-label="Предыдущий день">‹</button>
                 <button class="icon-button" id="next-day" type="button" aria-label="Следующий день">›</button>
+                <button class="icon-button day-add-button" id="day-add-button" type="button" aria-label="Добавить занятие" title="Добавить занятие">+</button>
               </div>
             </div>
             <div class="section-heading">
@@ -110,27 +111,19 @@
               <label for="event-title">Название</label>
               <input id="event-title" name="title" type="text" maxlength="120" placeholder="Например, прогулка с Аней" required>
             </div>
-            <div class="field-row">
+            <div class="field">
+              <label for="event-date">Дата</label>
+              <input id="event-date" name="date" type="date" required>
+            </div>
+            <div class="field-row time-range">
               <div class="field">
-                <label for="event-date">Дата</label>
-                <input id="event-date" name="date" type="date" required>
-              </div>
-              <div class="field">
-                <label for="event-time">Время</label>
+                <label for="event-time">С</label>
                 <input id="event-time" name="time" type="time">
               </div>
-            </div>
-            <div class="field">
-              <label for="event-duration">Длительность</label>
-              <select id="event-duration" name="durationMinutes">
-                <option value="30">30 минут</option>
-                <option value="45">45 минут</option>
-                <option value="60" selected>1 час</option>
-                <option value="90">1 час 30 минут</option>
-                <option value="120">2 часа</option>
-                <option value="180">3 часа</option>
-              </select>
-              <p class="repeat-hint">Без времени занятие считается на весь день.</p>
+              <div class="field">
+                <label for="event-end-time">До</label>
+                <input id="event-end-time" name="endTime" type="time">
+              </div>
             </div>
             <div class="field">
               <label for="event-repeat">Повторять</label>
@@ -139,14 +132,6 @@
                 <option value="weekly">Каждую неделю</option>
               </select>
               <p class="repeat-hint" id="repeat-hint">Однократное событие.</p>
-            </div>
-            <div class="field">
-              <label for="event-place">Место <span class="optional">необязательно</span></label>
-              <input id="event-place" name="place" type="text" maxlength="120" placeholder="Где встретимся?">
-            </div>
-            <div class="field">
-              <label for="event-notes">Детали <span class="optional">необязательно</span></label>
-              <textarea id="event-notes" name="notes" rows="2" maxlength="500" placeholder="Что важно не забыть?"></textarea>
             </div>
             <div class="transcript-box" id="transcript-box" hidden>
               <label for="voice-transcript">Распознанный текст <span class="optional">можно исправить</span></label>

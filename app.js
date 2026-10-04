@@ -5,8 +5,6 @@ const BACKUP_FORMAT = "quiet-day-planner-backup";
 const BACKUP_VERSION = 1;
 const monthNames = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
 const monthNamesGenitive = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
-const weekdayNames = ["воскресенье", "понедельник", "вторник", "среду", "четверг", "пятницу", "субботу"];
-const shortWeekdays = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
 const monthsByName = new Map([
   ["январ", 0], ["феврал", 1], ["март", 2], ["апрел", 3], ["май", 4], ["мая", 4], ["июн", 5],
   ["июл", 6], ["август", 7], ["сентябр", 8], ["октябр", 9], ["ноябр", 10], ["декабр", 11]
@@ -27,6 +25,7 @@ const elements = {
   backToCalendar: document.querySelector("#back-to-calendar"),
   previousDay: document.querySelector("#previous-day"),
   nextDay: document.querySelector("#next-day"),
+  dayAddButton: document.querySelector("#day-add-button"),
   taskCount: document.querySelector("#task-count"),
   taskForm: document.querySelector("#task-form"),
   taskInput: document.querySelector("#task-input"),
@@ -38,11 +37,9 @@ const elements = {
   title: document.querySelector("#event-title"),
   date: document.querySelector("#event-date"),
   time: document.querySelector("#event-time"),
-  duration: document.querySelector("#event-duration"),
+  endTime: document.querySelector("#event-end-time"),
   repeat: document.querySelector("#event-repeat"),
   repeatHint: document.querySelector("#repeat-hint"),
-  place: document.querySelector("#event-place"),
-  notes: document.querySelector("#event-notes"),
   recordButton: document.querySelector("#record-button"),
   addVoiceButton: document.querySelector("#add-voice-button"),
   voiceHint: document.querySelector("#voice-hint"),
@@ -58,6 +55,7 @@ const today = new Date();
 let selectedDate = dateKey(today);
 let displayedMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 let isDayView = false;
+let isDayAddOpen = false;
 let events = [];
 let tasks = [];
 let editingEventId = null;
@@ -110,10 +108,8 @@ function getCurrentDraft() {
     title: elements.title.value,
     date: elements.date.value,
     time: elements.time.value,
-    durationMinutes: elements.duration.value,
+    endTime: elements.endTime.value,
     repeat: elements.repeat.value,
-    place: elements.place.value,
-    notes: elements.notes.value,
     transcript: elements.transcript.value,
     voiceDraft,
     editingEventId,
@@ -121,7 +117,7 @@ function getCurrentDraft() {
     touchedFields: [...touchedFields],
     voiceFields: [...voiceFields]
   };
-  const hasContent = [draft.title, draft.time, draft.place, draft.notes, draft.transcript].some(value => value.trim())
+  const hasContent = [draft.title, draft.time, draft.endTime, draft.transcript].some(value => value.trim())
     || draft.repeat === "weekly";
   return hasContent ? draft : null;
 }
@@ -132,12 +128,12 @@ function restoreDraft(draft) {
   elements.title.value = typeof draft.title === "string" ? draft.title : "";
   elements.date.value = typeof draft.date === "string" ? draft.date : "";
   elements.time.value = typeof draft.time === "string" ? draft.time : "";
-  elements.duration.value = ["30", "45", "60", "90", "120", "180"].includes(String(draft.durationMinutes))
-    ? String(draft.durationMinutes)
-    : "60";
+  elements.endTime.value = typeof draft.endTime === "string" ? draft.endTime : "";
+  if (!elements.endTime.value && elements.time.value && draft.durationMinutes != null) {
+    const start = new Date(`2000-01-01T${elements.time.value}:00`);
+    elements.endTime.value = formatTimeValue(new Date(start.getTime() + (Number(draft.durationMinutes) || 60) * 60000));
+  }
   elements.repeat.value = draft.repeat === "weekly" ? "weekly" : "none";
-  elements.place.value = typeof draft.place === "string" ? draft.place : "";
-  elements.notes.value = typeof draft.notes === "string" ? draft.notes : "";
   elements.transcript.value = typeof draft.transcript === "string" ? draft.transcript : "";
   elements.transcriptBox.hidden = !elements.transcript.value;
   voiceDraft = Boolean(draft.voiceDraft);
@@ -147,12 +143,12 @@ function restoreDraft(draft) {
   manualFieldsTouched = Boolean(draft.manualFieldsTouched);
   if (Array.isArray(draft.touchedFields)) {
     for (const field of draft.touchedFields) {
-      if (["title", "date", "time", "place", "notes"].includes(field)) touchedFields.add(field);
+      if (["title", "date", "time", "endTime", "repeat"].includes(field)) touchedFields.add(field);
     }
   }
   if (Array.isArray(draft.voiceFields)) {
     for (const field of draft.voiceFields) {
-      if (["title", "date", "time", "place"].includes(field)) voiceFields.add(field);
+      if (["title", "date", "time", "endTime", "repeat"].includes(field)) voiceFields.add(field);
     }
   }
   elements.addVoiceButton.hidden = !voiceDraft;
@@ -212,8 +208,9 @@ function isValidBackup(backup) {
     && backup.data.events.every(event => event && typeof event.id === "string"
       && typeof event.title === "string" && typeof event.date === "string"
       && (event.repeat === undefined || event.repeat === "none" || event.repeat === "weekly")
-      && (event.durationMinutes === undefined || Number.isInteger(event.durationMinutes)
-        && event.durationMinutes >= 15 && event.durationMinutes <= 720))
+      && (event.durationMinutes === undefined || event.durationMinutes === null
+        || Number.isInteger(event.durationMinutes) && event.durationMinutes >= 1 && event.durationMinutes < 1440)
+      && (event.endTime === undefined || event.endTime === "" || /^\d{2}:\d{2}$/.test(event.endTime)))
     && backup.data.tasks.every(task => task && typeof task.id === "string" && typeof task.text === "string")
     && (backup.data.draft === null || typeof backup.data.draft === "object");
 }
@@ -258,6 +255,7 @@ function render() {
   elements.todayLabel.textContent = todayLabel.toLocaleUpperCase("ru-RU");
   elements.monthTitle.textContent = `${monthNames[displayedMonth.getMonth()]} ${displayedMonth.getFullYear()}`;
   elements.appShell.classList.toggle("day-view-mode", isDayView);
+  elements.appShell.classList.toggle("day-add-open", isDayAddOpen);
   elements.dayViewToolbar.hidden = !isDayView;
   renderCalendar();
   renderAgenda();
@@ -276,6 +274,27 @@ function eventOccursOnDate(event, key) {
   return new Date(`${event.date}T12:00:00`).getDay() === new Date(`${key}T12:00:00`).getDay();
 }
 
+function getEventEndDate(event, occurrenceDate) {
+  const start = new Date(`${occurrenceDate}T${event.time}:00`);
+  const end = event.endTime
+    ? new Date(`${occurrenceDate}T${event.endTime}:00`)
+    : new Date(start.getTime() + (Number(event.durationMinutes) || 60) * 60000);
+  if (end <= start) end.setDate(end.getDate() + 1);
+  return end;
+}
+
+function getEventDurationMinutes(startTime, endTime) {
+  const [startHour, startMinute] = startTime.split(":").map(Number);
+  const [endHour, endMinute] = endTime.split(":").map(Number);
+  let duration = endHour * 60 + endMinute - startHour * 60 - startMinute;
+  if (duration < 0) duration += 24 * 60;
+  return duration;
+}
+
+function formatTimeValue(date) {
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
 function updateRepeatHint() {
   if (elements.repeat.value !== "weekly" || !elements.date.value) {
     elements.repeatHint.textContent = "Однократное событие.";
@@ -288,7 +307,7 @@ function updateRepeatHint() {
 function getEventInterval(event, key) {
   const start = event.time ? new Date(`${key}T${event.time}:00`) : new Date(`${key}T00:00:00`);
   const end = event.time
-    ? new Date(start.getTime() + (Number(event.durationMinutes) || 60) * 60 * 1000)
+    ? getEventEndDate(event, key)
     : new Date(`${shiftDate(key, 1)}T00:00:00`);
   return { start: start.getTime(), end: end.getTime() };
 }
@@ -391,7 +410,7 @@ function formatSelectedDate(key) {
 function formatEventTime(event, occurrenceDate) {
   if (!event.time) return "Весь день";
   const start = new Date(`${occurrenceDate}T${event.time}:00`);
-  const end = new Date(start.getTime() + (Number(event.durationMinutes) || 60) * 60 * 1000);
+  const end = getEventEndDate(event, occurrenceDate);
   const formatTime = date => new Intl.DateTimeFormat("ru-RU", {
     hour: "2-digit",
     minute: "2-digit",
@@ -431,18 +450,6 @@ function renderAgenda() {
     title.className = "event-title";
     title.textContent = event.title;
     content.append(time, title);
-    if (event.place) {
-      const place = document.createElement("p");
-      place.className = "event-meta";
-      place.textContent = event.place;
-      content.append(place);
-    }
-    if (event.notes) {
-      const notes = document.createElement("p");
-      notes.className = "event-meta";
-      notes.textContent = event.notes;
-      content.append(notes);
-    }
     if (event.repeat === "weekly") {
       const repeat = document.createElement("p");
       repeat.className = "event-meta event-repeat-label";
@@ -522,6 +529,7 @@ function resetEventForm() {
   manualFieldsTouched = false;
   touchedFields.clear();
   voiceFields.clear();
+  clearStatus();
   elements.voiceHint.textContent = "Для распознавания речи может понадобиться интернет. Без сети можно заполнить событие вручную.";
 }
 
@@ -529,6 +537,7 @@ function editEvent(id) {
   const event = events.find(item => item.id === id);
   if (!event) return;
   isDayView = false;
+  isDayAddOpen = false;
   render();
   editingEventId = id;
   voiceDraft = false;
@@ -538,11 +547,9 @@ function editEvent(id) {
   elements.title.value = event.title;
   elements.date.value = event.date;
   elements.time.value = event.time || "";
-  elements.duration.value = String(event.durationMinutes || 60);
+  elements.endTime.value = event.time ? event.endTime || formatTimeValue(getEventEndDate(event, event.date)) : "";
   elements.repeat.value = event.repeat === "weekly" ? "weekly" : "none";
   updateRepeatHint();
-  elements.place.value = event.place || "";
-  elements.notes.value = event.notes || "";
   elements.transcriptBox.hidden = true;
   elements.addVoiceButton.hidden = true;
   elements.recordButton.hidden = true;
@@ -581,104 +588,149 @@ function addTask(text) {
 }
 
 function parseSpokenMessage(raw) {
-  const text = raw.trim();
-  let remaining = text;
+  let remaining = raw.trim();
   let date = "";
   let time = "";
-  let place = "";
+  let endTime = "";
+  let repeat = null;
+  let durationMinutes = null;
+  let durationConflict = false;
+  const weekdayPatterns = [
+    { day: 0, pattern: "воскресенье|воскресенья|воскресеньям" },
+    { day: 1, pattern: "понедельник|понедельника|понедельникам" },
+    { day: 2, pattern: "вторник|вторника|вторникам" },
+    { day: 3, pattern: "среда|среду|среды|средам" },
+    { day: 4, pattern: "четверг|четверга|четвергам" },
+    { day: 5, pattern: "пятница|пятницу|пятницы|пятницам" },
+    { day: 6, pattern: "суббота|субботу|субботы|субботам" }
+  ];
+  const alternatives = weekdayPatterns.map(item => item.pattern).join("|");
+  const weekdayMatch = remaining.match(new RegExp(`(?:^|\\s)(?:(каждый|каждую|каждое|по|в|на)\\s+)?(${alternatives})(?=$|\\s|[,!.?])`, "i"));
+  const weekdayEntry = weekdayMatch && weekdayPatterns.find(item =>
+    new RegExp(`^(?:${item.pattern})$`, "i").test(weekdayMatch[2])
+  );
+  const weeklyPhrase = remaining.match(/(?:^|\s)(?:каждую\s+неделю|еженедельно)(?=$|\s|[,!.?])/i);
+  if (weeklyPhrase || weekdayMatch && /^(каждый|каждую|каждое|по)$/i.test(weekdayMatch[1] || "")) repeat = "weekly";
 
-  const relative = [
-    [/послезавтра/i, 2], [/завтра/i, 1], [/сегодня/i, 0]
-  ].find(([pattern]) => pattern.test(remaining));
+  const relative = [[/послезавтра/i, 2], [/завтра/i, 1], [/сегодня/i, 0]]
+    .find(([pattern]) => pattern.test(remaining));
   if (relative) {
     const target = new Date();
     target.setDate(target.getDate() + relative[1]);
     date = dateKey(target);
     remaining = remaining.replace(relative[0], " ");
-  } else {
-    const weekdayPattern = new RegExp(`(?:^|\\s)(?:в\\s+)?(${weekdayNames.join("|")})(?=$|\\s|[,!.?])`, "i");
-    const weekdayMatch = remaining.match(weekdayPattern);
-    if (weekdayMatch) {
-      const weekday = weekdayNames.findIndex(name => name.toLowerCase() === weekdayMatch[1].toLowerCase());
+  }
+  const namedDate = remaining.match(/(?:^|\s)(\d{1,2})(?:-го)?\s+([а-яё]+)/i);
+  if (!date && namedDate) {
+    const monthName = namedDate[2].toLowerCase();
+    const monthEntry = [...monthsByName.entries()].find(([prefix]) => monthName.startsWith(prefix));
+    if (monthEntry) {
+      const day = Number(namedDate[1]);
+      const month = monthEntry[1];
+      const year = new Date().getFullYear() + (month < new Date().getMonth() ? 1 : 0);
+      const candidate = new Date(year, month, day);
+      if (candidate.getMonth() === month && candidate.getDate() === day) {
+        date = dateKey(candidate);
+        remaining = remaining.replace(namedDate[0], " ");
+      }
+    }
+  }
+  if (weekdayMatch) {
+    if (!date && weekdayEntry) {
       const target = new Date();
-      let difference = (weekday - target.getDay() + 7) % 7;
-      target.setDate(target.getDate() + difference);
+      target.setDate(target.getDate() + (weekdayEntry.day - target.getDay() + 7) % 7);
       date = dateKey(target);
-      remaining = remaining.replace(weekdayMatch[0], " ");
-    } else {
-      const namedDate = remaining.match(/(?:^|\s)(\d{1,2})(?:-го)?\s+([а-яё]+)/i);
-      if (namedDate) {
-        const monthName = namedDate[2].toLowerCase();
-        const monthEntry = [...monthsByName.entries()].find(([prefix]) => monthName.startsWith(prefix));
-        if (monthEntry) {
-          const day = Number(namedDate[1]);
-          const month = monthEntry[1];
-          const year = new Date().getFullYear() + (month < new Date().getMonth() ? 1 : 0);
-          const candidate = new Date(year, month, day);
-          if (candidate.getMonth() === month && candidate.getDate() === day) {
-            date = dateKey(candidate);
-            remaining = remaining.replace(namedDate[0], " ");
-          }
-        }
+    }
+    remaining = remaining.replace(weekdayMatch[0], " ");
+  }
+  if (weeklyPhrase) remaining = remaining.replace(weeklyPhrase[0], " ");
+
+  const rangeMatch = remaining.match(/(?:^|\s)(?:с\s*)?(\d{1,2})(?:(?:[:.])(\d{2})|(?:\s+)(\d{2}))?\s*(?:до|[-–—])\s*(\d{1,2})(?:(?:[:.])(\d{2})|(?:\s+)(\d{2}))?(?=$|\s|[,!.?])/i);
+  if (rangeMatch) {
+    const startHour = Number(rangeMatch[1]);
+    const startMinute = Number(rangeMatch[2] || rangeMatch[3] || "0");
+    const endHour = Number(rangeMatch[4]);
+    const endMinute = Number(rangeMatch[5] || rangeMatch[6] || "0");
+    if (startHour < 24 && startMinute < 60 && endHour < 24 && endMinute < 60) {
+      time = `${String(startHour).padStart(2, "0")}:${String(startMinute).padStart(2, "0")}`;
+      endTime = `${String(endHour).padStart(2, "0")}:${String(endMinute).padStart(2, "0")}`;
+      durationMinutes = getEventDurationMinutes(time, endTime);
+      remaining = remaining.replace(rangeMatch[0], " ");
+    }
+  }
+  if (!time) {
+    const timeMatch = remaining.match(/(?:^|\s)(?:(?:в|к|около|с)\s*)?(\d{1,2})(?:(?:[:.])(\d{2})|(?:\s+)(\d{2})|\s+час(?:а|ов)?)(?=$|\s|[,!.?])/i)
+      || remaining.match(/(?:^|\s)(?:в|к|около|с)\s*(\d{1,2})(?=$|\s|[,!.?])/i);
+    if (timeMatch) {
+      const hour = Number(timeMatch[1]);
+      const minute = Number(timeMatch[2] || timeMatch[3] || "0");
+      if (hour < 24 && minute < 60) {
+        time = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+        remaining = remaining.replace(timeMatch[0], " ");
       }
     }
   }
 
-  const timeMatch = remaining.match(/(?:^|\s)(?:(?:в|к|около|на)\s*)?(\d{1,2})[:.](\d{2})(?=$|\s)|(?:^|\s)(?:в|к|около|на)\s*(\d{1,2})(?=$|\s)/i);
-  if (timeMatch) {
-    const hour = Number(timeMatch[1] || timeMatch[3]);
-    const minute = Number(timeMatch[2] || "0");
-    if (hour < 24 && minute < 60) {
-      time = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
-      remaining = remaining.replace(timeMatch[0], " ");
-    }
+  const durationMatch = remaining.match(/(?:^|\s)(?:(?:на|продолжительностью|длительностью|продолжительность|длительность)\s+)?(полчаса|полтора\s+часа|(?:(\d+(?:[,.]\d+)?|пятнадцать|тридцать|сорок|пятьдесят|один|одна|два|две|три|четыре)\s*)?(минут(?:у|ы)?|мин|час(?:а|ов)?))(?=$|\s|[,!.?])/i);
+  if (durationMatch) {
+    const phrase = durationMatch[1].toLowerCase();
+    const unit = durationMatch[3] || "час";
+    if (phrase === "полчаса") durationMinutes = 30;
+    else if (phrase.startsWith("полтора")) durationMinutes = 90;
+    else if (durationMatch[2]) {
+      const spokenNumbers = { пятнадцать: 15, тридцать: 30, сорок: 40, пятьдесят: 50, один: 1, одна: 1, два: 2, две: 2, три: 3, четыре: 4 };
+      const amount = spokenNumbers[durationMatch[2]] || Number(String(durationMatch[2]).replace(",", "."));
+      durationMinutes = Math.round(amount * (unit.startsWith("мин") ? 1 : 60));
+    } else if (unit.startsWith("мин")) durationMinutes = 1;
+    else if (/на\s|длительност|продолжительност/i.test(durationMatch[0])) durationMinutes = 60;
+    if (durationMinutes) remaining = remaining.replace(durationMatch[0], " ");
   }
-
-  const placeMatch = remaining.match(/(?:^|\s)(?:в|на)\s+((?:кафе|офисе|доме|парке|центре|клинике|школе|университете|работе|вокзале|аэропорту)(?:\s+[^,.!?]+)*)/i);
-  if (placeMatch) {
-    place = placeMatch[1].trim();
-    remaining = remaining.replace(placeMatch[0], " ");
+  if (time && durationMinutes && endTime) {
+    durationConflict = getEventDurationMinutes(time, endTime) !== durationMinutes;
+  } else if (time && durationMinutes && !endTime) {
+    const [hour, minute] = time.split(":").map(Number);
+    const endMinutes = (hour * 60 + minute + durationMinutes) % (24 * 60);
+    endTime = `${String(Math.floor(endMinutes / 60)).padStart(2, "0")}:${String(endMinutes % 60).padStart(2, "0")}`;
   }
-
   const title = remaining
     .replace(/(?:^|\s)(?:давай|нужно|надо|запланируй|напомни|встретиться|сходить|пойти|будет|мне|пожалуйста)(?=$|\s)/gi, " ")
-    .replace(/[,.!?;:]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return { title, date, time, place };
+    .replace(/[,.!?;:]+/g, " ").replace(/\s+/g, " ").trim();
+  return { title, date, time, endTime, repeat, durationMinutes, durationConflict };
 }
 
 function beginRecognition(mode) {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
-    showStatus("В этом браузере не поддерживается распознавание речи. Заполни поля события вручную — они не будут потеряны.", "error");
+    showStatus("В этом браузере не поддерживается распознавание речи. Заполни поля вручную.", "error");
     return;
   }
   if (recognition) {
     recognition.abort();
     recognition = null;
   }
-
   if (mode === "initial" && !editingEventId) {
     if (voiceDraft || manualFieldsTouched) {
       mode = "additional";
       voiceDraft = true;
       elements.addVoiceButton.hidden = false;
-      if (!touchedFields.has("date")) elements.date.value = "";
-      if (!touchedFields.has("time")) elements.time.value = "";
+      if (!touchedFields.has("date") && !voiceFields.has("date")) elements.date.value = "";
+      if (!touchedFields.has("time") && !voiceFields.has("time")) elements.time.value = "";
+      if (!touchedFields.has("endTime") && !voiceFields.has("endTime")) elements.endTime.value = "";
     } else {
       elements.date.value = "";
+      elements.time.value = "";
+      elements.endTime.value = "";
+      elements.repeat.value = "none";
       elements.transcriptBox.hidden = true;
       elements.transcript.value = "";
       voiceDraft = true;
       voiceFields.clear();
       elements.formHeading.textContent = "Проверь черновик";
       elements.cancelEditButton.hidden = false;
-      elements.voiceHint.textContent = "Черновик не попадёт в календарь, пока ты его не подтвердишь. Распознавание может требовать интернет.";
+      elements.voiceHint.textContent = "Можно назвать день, дату, время начала и окончания или длительность.";
     }
   }
   saveStorage();
-
   clearStatus();
   const speech = new SpeechRecognition();
   recognition = speech;
@@ -688,8 +740,7 @@ function beginRecognition(mode) {
   elements.recordButton.classList.add("recording");
   elements.recordButton.innerHTML = '<span aria-hidden="true">●</span> Слушаю…';
   elements.recordButton.disabled = true;
-  showStatus(mode === "additional" ? "Говори детали — они добавятся к текущему черновику." : "Слушаю. Расскажи о своём плане.", "");
-
+  showStatus(mode === "additional" ? "Говори детали — они добавятся к текущему черновику." : "Слушаю. Расскажи о своём плане.");
   let finalText = "";
   speech.onresult = event => {
     let interim = "";
@@ -702,25 +753,21 @@ function beginRecognition(mode) {
   };
   speech.onerror = event => {
     const messages = {
-      "not-allowed": "Нет доступа к микрофону. Разреши его в настройках браузера или заполни событие вручную.",
-      "service-not-allowed": "Сервис распознавания речи недоступен. Попробуй другой браузер или введи текст вручную.",
-      "no-speech": "Не удалось услышать речь. Попробуй ещё раз или введи детали вручную.",
+      "not-allowed": "Нет доступа к микрофону. Разреши его в настройках браузера или заполни поля вручную.",
+      "service-not-allowed": "Сервис распознавания речи недоступен. Попробуй другой браузер или введи данные вручную.",
+      "no-speech": "Не удалось услышать речь. Попробуй ещё раз или введи данные вручную.",
       "network": "Сервис распознавания недоступен без сети. Черновик сохранён; можно продолжить вручную."
     };
-    showStatus(messages[event.error] || "Не удалось распознать голос. Введи или проверь детали вручную.", "error");
+    showStatus(messages[event.error] || "Не удалось распознать голос. Проверь данные вручную.", "error");
   };
   speech.onend = () => {
     elements.recordButton.classList.remove("recording");
     elements.recordButton.innerHTML = '<span aria-hidden="true">♩</span> Записать голосом';
     elements.recordButton.disabled = false;
     recognition = null;
-    if (finalText.trim()) {
-      applyVoiceText(finalText.trim(), mode);
-    } else if (elements.status.textContent.startsWith("Слушаю.")) {
-      showStatus("Речь не распознана. Попробуй ещё раз или введи текст вручную.", "error");
-    }
+    if (finalText.trim()) applyVoiceText(finalText.trim(), mode);
+    else if (elements.status.textContent.startsWith("Слушаю.")) showStatus("Речь не распознана. Попробуй ещё раз или введи данные вручную.", "error");
   };
-
   try {
     speech.start();
   } catch (error) {
@@ -735,56 +782,52 @@ function beginRecognition(mode) {
 
 function applyVoiceText(text, mode) {
   const parsed = parseSpokenMessage(text);
-  if (mode === "initial") {
-    voiceDraft = true;
-    elements.transcriptBox.hidden = false;
-    elements.transcript.value = text;
-    elements.title.value = parsed.title || text;
-    elements.date.value = parsed.date;
-    elements.time.value = parsed.time;
-    elements.place.value = parsed.place;
-    elements.notes.value = "";
-    for (const [field, value] of [["title", parsed.title || text], ["date", parsed.date], ["time", parsed.time], ["place", parsed.place]]) {
-      if (value) voiceFields.add(field);
+  const parsedEndTime = parsed.endTime || (parsed.durationMinutes && elements.time.value
+    ? formatTimeValue(new Date(new Date(`2000-01-01T${elements.time.value}:00`).getTime() + parsed.durationMinutes * 60000))
+    : "");
+  const assignments = [
+    ["date", parsed.date, elements.date],
+    ["time", parsed.time, elements.time],
+    ["endTime", parsedEndTime, elements.endTime],
+    ["repeat", parsed.repeat, elements.repeat]
+  ];
+  const conflicts = [];
+  if (mode === "additional") {
+    for (const [field, value, input] of assignments) {
+      if (value && (touchedFields.has(field) || voiceFields.has(field)) && input.value !== value) conflicts.push(field);
     }
-    elements.addVoiceButton.hidden = false;
-    elements.cancelEditButton.hidden = false;
-    const missing = [];
-    if (!parsed.date) missing.push("дату");
-    if (!parsed.time) missing.push("время");
-    showStatus(missing.length
-      ? `Черновик готов. Уточни ${missing.join(" и ")} в полях ниже — я не стала их угадывать.`
-      : "Черновик готов. Проверь детали, при необходимости добавь ещё голосом и подтверди событие.", missing.length ? "" : "success");
-  } else {
-    voiceDraft = true;
-    const conflicts = [];
-    if (parsed.date && (voiceFields.has("date") || touchedFields.has("date")) && parsed.date !== elements.date.value) conflicts.push("дата");
-    if (parsed.time && (voiceFields.has("time") || touchedFields.has("time")) && parsed.time !== elements.time.value) conflicts.push("время");
-    if (parsed.place && (voiceFields.has("place") || touchedFields.has("place")) && parsed.place.toLowerCase() !== elements.place.value.trim().toLowerCase()) conflicts.push("место");
+    if (parsed.durationMinutes && elements.time.value && elements.endTime.value
+      && getEventDurationMinutes(elements.time.value, elements.endTime.value) !== parsed.durationMinutes) {
+      conflicts.push("длительность");
+    }
+  }
+  elements.transcriptBox.hidden = false;
+  elements.transcript.value = `${elements.transcript.value}${elements.transcript.value ? "\n" : ""}${text}`;
+  if (mode === "initial" || !elements.title.value.trim()) elements.title.value = parsed.title || (mode === "initial" ? text : elements.title.value);
+  for (const [field, value, input] of assignments) {
+    if (!value || conflicts.includes(field)) continue;
+    if (mode === "initial" || !touchedFields.has(field) && !voiceFields.has(field)) {
+      input.value = value;
+      voiceFields.add(field);
+    }
+  }
+  if (parsed.title) voiceFields.add("title");
+  voiceDraft = true;
+  elements.addVoiceButton.hidden = false;
+  elements.cancelEditButton.hidden = false;
+  updateRepeatHint();
 
-    elements.transcriptBox.hidden = false;
-    elements.transcript.value = `${elements.transcript.value}${elements.transcript.value ? "\n" : ""}${text}`;
-    if (!elements.title.value.trim() && parsed.title) elements.title.value = parsed.title;
-    if (parsed.date && !voiceFields.has("date") && !touchedFields.has("date")) {
-      elements.date.value = parsed.date;
-      voiceFields.add("date");
-    }
-    if (parsed.time && !voiceFields.has("time") && !touchedFields.has("time")) {
-      elements.time.value = parsed.time;
-      voiceFields.add("time");
-    }
-    if (parsed.place && !voiceFields.has("place") && !touchedFields.has("place")) {
-      elements.place.value = parsed.place;
-      voiceFields.add("place");
-    }
-    const existingNotes = elements.notes.value.trim();
-    elements.notes.value = existingNotes ? `${existingNotes}\n${text}` : text;
-    if (conflicts.length) {
-      showStatus(`Дополнение сохранено, прежние данные не заменены. Есть другое значение для поля: ${conflicts.join(", ")}. Уточни его вручную.`, "error");
-    } else {
-      voiceDraft = true;
-      showStatus("Голосовые детали добавлены к черновику. Проверь обновлённые поля перед подтверждением.", "success");
-    }
+  const missing = [];
+  if (!elements.date.value) missing.push("дату или день недели");
+  if (!elements.time.value) missing.push("время начала");
+  if (!elements.endTime.value) missing.push("время окончания или длительность");
+  if (parsed.durationConflict && !conflicts.includes("длительность")) conflicts.push("длительность");
+  if (conflicts.length) {
+    showStatus(`В голосовых данных есть противоречие: ${conflicts.join(", ")}. Уточни значения вручную.`, "error");
+  } else if (missing.length) {
+    showStatus(`Черновик готов. Уточни ${missing.join(", ")} перед сохранением.`, "error");
+  } else {
+    showStatus("Голосовой черновик готов. Проверь дату, время и повтор перед сохранением.", "success");
   }
   saveStorage();
 }
@@ -795,13 +838,24 @@ function saveEvent(event) {
   const title = elements.title.value.trim();
   const date = elements.date.value;
   const time = elements.time.value;
+  const endTime = elements.endTime.value;
   if (!title || !date) {
     showStatus("Заполни название и дату события.", "error");
     return;
   }
-  if (voiceDraft && !time) {
-    showStatus("В голосовом черновике не было времени. Уточни время вручную или добавь его голосом, чтобы продолжить.", "error");
-    elements.time.focus();
+  if (Boolean(time) !== Boolean(endTime)) {
+    showStatus("Укажи время начала и окончания или оставь оба поля пустыми для события на весь день.", "error");
+    (time ? elements.endTime : elements.time).focus();
+    return;
+  }
+  if (time && time === endTime) {
+    showStatus("Время окончания должно отличаться от времени начала.", "error");
+    elements.endTime.focus();
+    return;
+  }
+  if (voiceDraft && (!time || !endTime)) {
+    showStatus("В голосовом черновике не хватило времени начала или окончания. Уточни оба поля перед сохранением.", "error");
+    (time ? elements.endTime : elements.time).focus();
     return;
   }
 
@@ -810,10 +864,9 @@ function saveEvent(event) {
     title,
     date,
     time,
-    durationMinutes: Number(elements.duration.value) || 60,
+    endTime,
+    durationMinutes: time ? getEventDurationMinutes(time, endTime) : null,
     repeat: elements.repeat.value,
-    place: elements.place.value.trim(),
-    notes: elements.notes.value.trim()
   };
   const conflict = findScheduleConflict(eventData);
   if (conflict) {
@@ -831,6 +884,7 @@ function saveEvent(event) {
     return;
   }
   selectedDate = date;
+  isDayAddOpen = false;
   const eventDate = new Date(`${date}T12:00:00`);
   displayedMonth = new Date(eventDate.getFullYear(), eventDate.getMonth(), 1);
   resetEventForm();
@@ -843,7 +897,7 @@ function downloadIcs(event) {
     + String(date.getMonth() + 1).padStart(2, "0")
     + String(date.getDate()).padStart(2, "0");
   const start = event.time ? new Date(`${event.date}T${event.time}:00`) : null;
-  const end = start ? new Date(start.getTime() + (Number(event.durationMinutes) || 60) * 60 * 1000) : null;
+  const end = start ? getEventEndDate(event, event.date) : null;
   const allDayEnd = new Date(`${event.date}T12:00:00`);
   allDayEnd.setDate(allDayEnd.getDate() + 1);
   const escapeIcs = value => String(value).replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
@@ -864,8 +918,6 @@ function downloadIcs(event) {
     const weekday = weekdays[new Date(`${event.date}T12:00:00`).getDay()];
     lines.push(`RRULE:FREQ=WEEKLY;BYDAY=${weekday}`);
   }
-  if (event.place) lines.push(`LOCATION:${escapeIcs(event.place)}`);
-  if (event.notes) lines.push(`DESCRIPTION:${escapeIcs(event.notes)}`);
   lines.push("END:VEVENT", "END:VCALENDAR");
   const blob = new Blob([`\uFEFF${lines.join("\r\n")}`], { type: "text/calendar;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -893,7 +945,19 @@ elements.todayButton.addEventListener("click", () => {
 });
 elements.backToCalendar.addEventListener("click", () => {
   isDayView = false;
+  isDayAddOpen = false;
   render();
+});
+elements.dayAddButton.addEventListener("click", () => {
+  if (isDayAddOpen) {
+    isDayAddOpen = false;
+    render();
+    return;
+  }
+  resetEventForm();
+  isDayAddOpen = true;
+  render();
+  elements.title.focus({ preventScroll: true });
 });
 for (const [button, offset] of [[elements.previousDay, -1], [elements.nextDay, 1]]) {
   button.addEventListener("click", () => {
@@ -925,7 +989,7 @@ elements.backupFileInput.addEventListener("change", () => {
   if (file) restoreBackup(file);
   elements.backupFileInput.value = "";
 });
-for (const field of [elements.title, elements.date, elements.time, elements.place, elements.notes]) {
+for (const field of [elements.title, elements.date, elements.time, elements.endTime, elements.repeat]) {
   field.addEventListener("input", () => {
     manualFieldsTouched = true;
     touchedFields.add(field.name);

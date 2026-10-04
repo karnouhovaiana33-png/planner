@@ -102,6 +102,9 @@ h1 span { color: var(--rose); }
 .day-view-mode .event-time { font-size: 14px; }
 .day-view-mode .event-title { font-size: 16px; }
 .day-view-mode .event-meta { font-size: 13px; }
+.day-view-mode.day-add-open .dashboard { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+.day-view-mode.day-add-open .create-card { display: block; grid-column: 1; width: min(100%, 900px); }
+.day-view-mode.day-add-open .day-add-button { background: var(--rose-pale); border-color: #e7c9c1; color: var(--rose-dark); }
 .empty-state { padding: 17px 13px; border-radius: 13px; background: #faf8f4; color: var(--muted); font-size: 13px; line-height: 1.55; }
 .event-item { display: grid; grid-template-columns: 4px minmax(0, 1fr) auto; gap: 11px; align-items: stretch; padding: 12px 11px; border: 1px solid #f0eee8; border-radius: 13px; }
 .event-stripe { border-radius: 9px; background: #d6a39a; }
@@ -155,6 +158,7 @@ h1 span { color: var(--rose); }
 .repeat-hint { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
 .event-repeat-label { color: var(--sage); }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.time-range .field input { min-height: 44px; }
 .transcript-box { display: grid; gap: 6px; padding-top: 2px; }
 .form-actions { display: flex; align-items: center; gap: 10px; margin-top: 2px; }
 .primary-button { min-height: 42px; flex: 1; padding: 0 14px; border: 0; border-radius: 11px; background: var(--rose); color: white; cursor: pointer; font-size: 12px; font-weight: 600; transition: background .15s; }
